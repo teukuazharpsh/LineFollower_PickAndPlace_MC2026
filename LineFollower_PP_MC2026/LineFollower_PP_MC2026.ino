@@ -123,21 +123,31 @@ void releaseBoxAndStop() {
 void handleCorner(int8_t dir) {
   stopMotor();
   delay(30);
+  
+  // 1. Maju agar as roda sejajar dengan titik sudut
   setMotor(ADVANCE_SPEED, ADVANCE_SPEED);   
-  delay(FORWARD_MS);
+  delay(FORWARD_MS); 
   stopMotor();
   delay(30);
 
+  // 2. Baca keadaan sensor pascamaju
   readSensors();
-  if (s[2]) { lastError = 0; return; }      // masih ada garis lurus 
+  
+  // 3. BARIS PEMBATALAN DIBAWAH INI DIMATIKAN (DIJADIKAN KOMENTAR)
+  // Mencegah robot batal berbelok akibat S3 masih menyentuh garis melintang tebal
+  // if (s[2]) { lastError = 0; return; }      
 
+  // 4. Lakukan putaran (pivot) mematah dengan dua roda berlawanan arah
   setMotor(dir * TURN_SPEED, -dir * TURN_SPEED);
   delay(MIN_PIVOT_MS);
   unsigned long t0 = millis();
+  
+  // 5. Berputar sampai S3 kembali mengunci garis lintasan yang baru
   while (millis() - t0 < PIVOT_TIMEOUT) {
     readSensors();
-    if (s[2]) break;                        // berhenti pivot jika tengah mengenai garis
+    if (s[2]) break; 
   }
+  
   stopMotor();
   delay(30);
   lastError = 0;
