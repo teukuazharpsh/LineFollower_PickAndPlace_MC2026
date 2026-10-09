@@ -8,6 +8,10 @@ AF_DCMotor motorL(4);              // M4 = Kiri
 #define DIR_FWD FORWARD
 #define DIR_BWD BACKWARD
 
+// Variabel pengali untuk membalik arah putaran jika terjadi ketidaksesuaian perangkat keras
+const int INVERT_L = -1;           // Diubah menjadi -1 karena M4 berputar mundur saat diperintah maju
+const int INVERT_R = 1;            // Tetap 1 asumsi M3 sudah benar (ubah ke -1 jika ikut terbalik)
+
 const int TEST_SPEED = 100;
 const unsigned long TEST_MS = 1500;
 
@@ -19,8 +23,9 @@ void driveMotor(AF_DCMotor &m, int spd) {
 }
 
 void setMotor(int left, int right) {
-  driveMotor(motorL, left);
-  driveMotor(motorR, right);
+  // Terapkan variabel pengali arah pada masing-masing motor
+  driveMotor(motorL, left * INVERT_L);
+  driveMotor(motorR, right * INVERT_R);
 }
 
 void stopMotor() { 
