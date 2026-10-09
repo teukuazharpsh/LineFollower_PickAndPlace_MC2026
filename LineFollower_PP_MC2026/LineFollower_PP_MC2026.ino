@@ -112,20 +112,24 @@ void releaseBoxAndStop() {
 
 // ---------- FUNGSI KUNCI MEMORI KESALAHAN ----------
 // dir: -1 = putar kiri, +1 = putar kanan
-// applyDelay: true jika dieksekusi saat S3 masih menyentuh garis lintasan awal
-void memoryTurn(int8_t dir, bool applyDelay) {
+void memoryTurn(int8_t dir) {
   // Putar di tempat dengan dua roda berlawanan arah (pivot mematah)
   setMotor(dir * SEARCH_SPEED, -dir * SEARCH_SPEED);
   
-  if (applyDelay) {
-     // Beri jeda 150md untuk memastikan S3 benar-benar keluar dari garis sebelum dikunci
-     delay(150); 
+  // FASE 1: PELEPASAN
+  // Tunggu sampai sensor tengah (S3) benar-benar KELUAR dari garis awal
+  unsigned long tRelease = millis();
+  while (millis() - tRelease < 500) { // Beri waktu maksimal 500md untuk keluar
+    readSensors();
+    if (!s[2]) break; // S3 sudah bersih dari garis hitam
   }
   
-  // KUNCI PUTARAN: Perulangan tidak akan berhenti sampai S3 menemukan garis lurus
-  while (true) {
+  // FASE 2: PENCARIAN
+  // Kunci putaran: Perulangan tidak akan berhenti sampai S3 menemukan garis lurus baru
+  unsigned long tFind = millis();
+  while (millis() - tFind < 2000) { // Waktu tunggu maksimal 2 detik agar tidak terjebak
     readSensors();
-    if (s[2]) break; 
+    if (s[2]) break; // Garis baru ditemukan
   }
   
   lastError = 0; // Reset memori kembali ke 0 karena posisi sudah lurus
@@ -163,35 +167,32 @@ void loop() {
   }
 
   // --- garis lintang penuh (finish/drop) ---
-  if (count >= 4) { // Diberi toleransi jika 4 atau 5 sensor menyala
+  if (count >= 4) { 
     if (holdingBox) {
       releaseBoxAndStop();
       return;
     }
-    // Jika belum membawa box, abaikan garis lintang, terus melaju lurus
     setMotor(BASE_SPEED_FREE, BASE_SPEED_FREE);
     return;
   }
 
-  // --- TIKUNGAN TAJAM (MEMORI POLA S1,S2,S3 / S3,S4,S5) ---
-  // Jika mendeteksi belokan tajam ke KIRI (S1, S2, S3 menyala, sisi kanan kosong)
-  if (s[0] && s[1] && s[2] && !s[4]) {
-     memoryTurn(-1, true); // Eksekusi fungsi kunci memori belok kiri
+  // --- TIKUNGAN TAJAM (MEMORI POLA S1,S2 / S4,S5) ---
+  // Syarat dibuat sedikit longgar (S1 dan S2 saja cukup) agar robot yang melaju kencang tidak melewatkan titik pemicu
+  if (s[0] && s[1] && !s[4]) {
+     memoryTurn(-1); // Eksekusi memori belok kiri
      return;
   }
-  // Jika mendeteksi belokan tajam ke KANAN (S5, S4, S3 menyala, sisi kiri kosong)
-  if (s[4] && s[3] && s[2] && !s[0]) {
-     memoryTurn(1, true); // Eksekusi fungsi kunci memori belok kanan
+  if (s[4] && s[3] && !s[0]) {
+     memoryTurn(1);  // Eksekusi memori belok kanan
      return;
   }
 
   // --- GARIS HILANG SEPENUHNYA (MEMORI KESALAHAN PID) ---
   if (count == 0) {
-    // Putar paksa ke arah kecenderungan terakhir tanpa jeda keluar garis
     if (lastError > 0) {
-      memoryTurn(1, false);  // Pivot kanan sampai lurus
+      memoryTurn(1);  // Pivot kanan sampai lurus
     } else {
-      memoryTurn(-1, false); // Pivot kiri sampai lurus
+      memoryTurn(-1); // Pivot kiri sampai lurus
     }
     return;
   }
