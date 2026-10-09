@@ -14,41 +14,40 @@ const uint8_t BOX_PIN = A5;
 #define DIR_BWD BACKWARD
 
 // ======== INVERSI ARAH MOTOR ========
-const int INVERT_L = -1;           // Diubah menjadi -1 karena M4 berputar mundur saat diperintah maju
-const int INVERT_R = 1;            // Tetap 1 asumsi M3 sudah benar (ubah ke -1 jika ikut terbalik)
+const int INVERT_L = -1;           // M4 berputar mundur saat diperintah maju
+const int INVERT_R = 1;            // Tetap 1 asumsi M3 sudah benar
 
 // ================= SENSOR DIGITAL (TCRT5000) =================
-// Level output modul saat sensor berada di atas GARIS.
-// Garis hitam di lantai putih: kebanyakan modul LM393 -> HIGH di hitam (LED indikator mati).
-// Jika robot bereaksi terbalik, ubah ke LOW.
 const uint8_t LINE_LEVEL = HIGH;
 const int8_t WEIGHT[5]   = {-2, -1, 0, 1, 2};   // satuan pitch (20 mm)
 
-const bool BOX_ACTIVE_LOW = true;  // modul IR umumnya LOW saat ada objek
+const bool BOX_ACTIVE_LOW = true;  
 const uint8_t BOX_DEBOUNCE = 3;
 
-#define DEBUG_SENSOR false         // true: cetak pola sensor ke Serial Monitor (uji saja, motor tetap jalan)
+#define DEBUG_SENSOR false         
 
 // ================= GRIPPER =================
 const int GRIP_OPEN  = 0;
-const int GRIP_CLOSE = 110;        // harus 90 s.d. 120
-const int GRIP_STEP_DELAY = 15;    // ms per 2 derajat
+const int GRIP_CLOSE = 110;        
+const int GRIP_STEP_DELAY = 15;    
 
 // ================= PID =================
-const float Kp = 25.0;
-const float Kd = 60.0;
-const int   BASE_SPEED_FREE  = 110;
-const int   BASE_SPEED_CARRY = 90; // lebih pelan saat membawa box
-const int   MAX_CORRECTION   = 90;
+// Kp dan Kd dinaikkan agar robot merespons error (berbelok) dengan lebih agresif
+const float Kp = 45.0;
+const float Kd = 90.0;
+// PWM dinaikkan agar motor mendapat torsi yang cukup untuk bermanuver
+const int   BASE_SPEED_FREE  = 140;
+const int   BASE_SPEED_CARRY = 120; 
+const int   MAX_CORRECTION   = 150;
 const unsigned long LOOP_MS  = 10;
 
 // ================= TIKUNGAN =================
-const int  TURN_SPEED    = 110;
-const int  ADVANCE_SPEED = 100;
-const unsigned long FORWARD_MS    = 290;  // = 58,08 mm / kecepatan(mm/s), KALIBRASI!
+const int  TURN_SPEED    = 160;   // Tenaga kuat untuk berputar di tempat
+const int  ADVANCE_SPEED = 140;   
+const unsigned long FORWARD_MS    = 180;  // Waktu as roda maju ke titik sudut dikurangi
 const unsigned long MIN_PIVOT_MS  = 120;
 const unsigned long PIVOT_TIMEOUT = 1500;
-const int  SEARCH_SPEED  = 90;
+const int  SEARCH_SPEED  = 150;   // Tenaga memutar badan saat kehilangan garis
 
 // ================= STATUS =================
 float lastError = 0;
@@ -124,20 +123,20 @@ void releaseBoxAndStop() {
 void handleCorner(int8_t dir) {
   stopMotor();
   delay(30);
-  setMotor(ADVANCE_SPEED, ADVANCE_SPEED);   // as roda menuju titik sudut
+  setMotor(ADVANCE_SPEED, ADVANCE_SPEED);   
   delay(FORWARD_MS);
   stopMotor();
   delay(30);
 
   readSensors();
-  if (s[2]) { lastError = 0; return; }      // masih ada garis lurus (persimpangan)
+  if (s[2]) { lastError = 0; return; }      // masih ada garis lurus 
 
   setMotor(dir * TURN_SPEED, -dir * TURN_SPEED);
   delay(MIN_PIVOT_MS);
   unsigned long t0 = millis();
   while (millis() - t0 < PIVOT_TIMEOUT) {
     readSensors();
-    if (s[2]) break;                        // sensor tengah menemukan garis
+    if (s[2]) break;                        // berhenti pivot jika tengah mengenai garis
   }
   stopMotor();
   delay(30);
@@ -182,28 +181,29 @@ void loop() {
     return;
   }
 
-  // --- tikungan 90 derajat: 11100 / 00111 ---
-  if (s[0] && s[1] && !s[4]) { handleCorner(-1); return; }
-  if (s[4] && s[3] && !s[0]) { handleCorner(+1); return; }
+  // --- tikungan 90 derajat ---
+  // Syarat dipermudah: deteksi sensor terluar menyala sementara sisi berlawanan mati total
+  if (s[0] && !s[3] && !s[4]) { handleCorner(-1); return; }
+  if (s[4] && !s[1] && !s[0]) { handleCorner(+1); return; }
 
-  // --- garis hilang: cari ke arah error terakhir ---
+  // --- garis hilang: putar searah galat terakhir ---
   if (count == 0) {
-    if (lastError >= 0) setMotor(SEARCH_SPEED, -SEARCH_SPEED);   // putar kanan
-    else                setMotor(-SEARCH_SPEED, SEARCH_SPEED);   // putar kiri
+    if (lastError >= 0) setMotor(SEARCH_SPEED, -SEARCH_SPEED);   
+    else                setMotor(-SEARCH_SPEED, SEARCH_SPEED);   
     return;
   }
 
   // --- PID ---
   int sum = 0;
   for (uint8_t i = 0; i < 5; i++) if (s[i]) sum += WEIGHT[i];
-  float error = (float)sum / count;                // -2 s.d. +2 pitch
+  float error = (float)sum / count;                
 
   float correction = Kp * error + Kd * (error - lastError);
   correction = constrain(correction, -MAX_CORRECTION, MAX_CORRECTION);
   lastError = error;
 
   int base  = holdingBox ? BASE_SPEED_CARRY : BASE_SPEED_FREE;
-  int left  = constrain(base + (int)correction, 0, 255);   // error + = garis di kanan, belok kanan
+  int left  = constrain(base + (int)correction, 0, 255);   
   int right = constrain(base - (int)correction, 0, 255);
   setMotor(left, right);
 }
