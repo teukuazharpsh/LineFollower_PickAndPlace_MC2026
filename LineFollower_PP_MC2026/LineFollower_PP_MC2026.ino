@@ -39,8 +39,10 @@ const int   BASE_SPEED_CARRY = 120;
 const int   MAX_CORRECTION   = 150;
 const unsigned long LOOP_MS  = 10;
 
-// ================= MEMORI TIKUNGAN =================
-const int  SEARCH_SPEED  = 195;   // Tenaga memutar badan saat mencari garis (pivot)
+// ================= MEMORI TIKUNGAN & REM =================
+const int  SEARCH_SPEED  = 160;   
+const int  BRAKE_SPEED   = 120;   // Kekuatan rem elektrik (PWM)
+const unsigned long BRAKE_MS = 25; // Durasi rem aktif (milidetik)
 
 // ================= STATUS =================
 float lastError = 0;
@@ -49,7 +51,7 @@ uint8_t boxCount = 0;
 unsigned long lastLoop = 0;
 bool s[5];
 
-// ---------- motor ----------
+// ---------- motor & active braking ----------
 void driveMotor(AF_DCMotor &m, int spd) {
   spd = constrain(spd, -255, 255);
   if (spd > 0)      { m.setSpeed(spd);  m.run(DIR_FWD); }
@@ -62,8 +64,20 @@ void setMotor(int left, int right) {
   driveMotor(motorR, right * INVERT_R);
 }
 
+// Fungsi Pengereman Aktif (Active Braking)
+void activeBrake() {
+  // Berikan arah berlawanan sekejap untuk melawan momentum peluncuran
+  driveMotor(motorL, -BRAKE_SPEED * INVERT_L);
+  driveMotor(motorR, -BRAKE_SPEED * INVERT_R);
+  delay(BRAKE_MS);
+  
+  // Lepas total setelah pengereman selesai
+  driveMotor(motorL, 0);
+  driveMotor(motorR, 0);
+}
+
 void stopMotor() { 
-  setMotor(0, 0); 
+  activeBrake(); // Menggantikan release bebas dengan rem aktif
 }
 
 // ---------- sensor ----------
@@ -110,21 +124,13 @@ void releaseBoxAndStop() {
   while (true) { }                 
 }
 
-// ---------- FUNGSI KUNCI MEMORI KESALAHAN (DIPERBAIKI) ----------
-// dir: -1 = putar kiri, +1 = putar kanan
+// ---------- FUNGSI MEMORI TIKUNGAN DENGAN REM ----------
 void memoryTurn(int8_t dir) {
-  // Tetapkan kecepatan pencarian yang stabil (misalnya 160 atau 170 agar tidak terlalu liar)
-  const int CONTROLLED_SPEED = 160;
-  
-  // Putar di tempat dengan dua roda berlawanan arah
-  setMotor(dir * CONTROLLED_SPEED, -dir * CONTROLLED_SPEED);
+  setMotor(dir * SEARCH_SPEED, -dir * SEARCH_SPEED);
   
   // FASE 1: PELEPASAN TERKONTROL
-  // Beri waktu minimum wajib berputar (misalnya 80 milidetik) agar robot benar-benar lepas dari garis awal 
-  // tanpa sempat berputar terlalu jauh. Sesuaikan angka milidetik ini di lapangan.
   delay(80); 
   
-  // Lanjutkan menunggu sampai sensor tengah (S3) benar-benar KELUAR dari garis awal
   unsigned long tRelease = millis();
   while (millis() - tRelease < 300) { 
     readSensors();
@@ -135,10 +141,10 @@ void memoryTurn(int8_t dir) {
   unsigned long tFind = millis();
   while (millis() - tFind < 1500) { 
     readSensors();
-    if (s[2]) break; // Garis baru ditemukan
+    if (s[2]) break; 
   }
   
-  stopMotor(); // Rem sebentar untuk menghentikan kelembaman (momentum) putaran
+  activeBrake(); // Rem aktif agar tidak kelewatan garis baru
   delay(20);
   
   lastError = 0; 
@@ -185,23 +191,22 @@ void loop() {
     return;
   }
 
-  // --- TIKUNGAN TAJAM (MEMORI POLA S1,S2 / S4,S5) ---
-  // Syarat dibuat sedikit longgar (S1 dan S2 saja cukup) agar robot yang melaju kencang tidak melewatkan titik pemicu
+  // --- TIKUNGAN TAJAM ---
   if (s[0] && s[1] && !s[4]) {
-     memoryTurn(-1); // Eksekusi memori belok kiri
+     memoryTurn(-1); 
      return;
   }
   if (s[4] && s[3] && !s[0]) {
-     memoryTurn(1);  // Eksekusi memori belok kanan
+     memoryTurn(1);  
      return;
   }
 
-  // --- GARIS HILANG SEPENUHNYA (MEMORI KESALAHAN PID) ---
+  // --- GARIS HILANG SEPENUHNYA ---
   if (count == 0) {
     if (lastError > 0) {
-      memoryTurn(1);  // Pivot kanan sampai lurus
+      memoryTurn(1);  
     } else {
-      memoryTurn(-1); // Pivot kiri sampai lurus
+      memoryTurn(-1); 
     }
     return;
   }
