@@ -40,7 +40,7 @@ const int   MAX_CORRECTION   = 150;
 const unsigned long LOOP_MS  = 10;
 
 // ================= MEMORI TIKUNGAN =================
-const int  SEARCH_SPEED  = 150;   // Tenaga memutar badan saat mencari garis (pivot)
+const int  SEARCH_SPEED  = 195;   // Tenaga memutar badan saat mencari garis (pivot)
 
 // ================= STATUS =================
 float lastError = 0;
@@ -110,29 +110,38 @@ void releaseBoxAndStop() {
   while (true) { }                 
 }
 
-// ---------- FUNGSI KUNCI MEMORI KESALAHAN ----------
+// ---------- FUNGSI KUNCI MEMORI KESALAHAN (DIPERBAIKI) ----------
 // dir: -1 = putar kiri, +1 = putar kanan
 void memoryTurn(int8_t dir) {
-  // Putar di tempat dengan dua roda berlawanan arah (pivot mematah)
-  setMotor(dir * SEARCH_SPEED, -dir * SEARCH_SPEED);
+  // Tetapkan kecepatan pencarian yang stabil (misalnya 160 atau 170 agar tidak terlalu liar)
+  const int CONTROLLED_SPEED = 160;
   
-  // FASE 1: PELEPASAN
-  // Tunggu sampai sensor tengah (S3) benar-benar KELUAR dari garis awal
+  // Putar di tempat dengan dua roda berlawanan arah
+  setMotor(dir * CONTROLLED_SPEED, -dir * CONTROLLED_SPEED);
+  
+  // FASE 1: PELEPASAN TERKONTROL
+  // Beri waktu minimum wajib berputar (misalnya 80 milidetik) agar robot benar-benar lepas dari garis awal 
+  // tanpa sempat berputar terlalu jauh. Sesuaikan angka milidetik ini di lapangan.
+  delay(80); 
+  
+  // Lanjutkan menunggu sampai sensor tengah (S3) benar-benar KELUAR dari garis awal
   unsigned long tRelease = millis();
-  while (millis() - tRelease < 500) { // Beri waktu maksimal 500md untuk keluar
+  while (millis() - tRelease < 300) { 
     readSensors();
-    if (!s[2]) break; // S3 sudah bersih dari garis hitam
+    if (!s[2]) break; 
   }
   
-  // FASE 2: PENCARIAN
-  // Kunci putaran: Perulangan tidak akan berhenti sampai S3 menemukan garis lurus baru
+  // FASE 2: PENCARIAN GARIS BARU
   unsigned long tFind = millis();
-  while (millis() - tFind < 2000) { // Waktu tunggu maksimal 2 detik agar tidak terjebak
+  while (millis() - tFind < 1500) { 
     readSensors();
     if (s[2]) break; // Garis baru ditemukan
   }
   
-  lastError = 0; // Reset memori kembali ke 0 karena posisi sudah lurus
+  stopMotor(); // Rem sebentar untuk menghentikan kelembaman (momentum) putaran
+  delay(20);
+  
+  lastError = 0; 
 }
 
 void setup() {
